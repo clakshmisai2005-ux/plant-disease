@@ -396,7 +396,6 @@ def load_model():
         return None
 
 def predict(session, img: Image.Image):
-    import onnxruntime as ort
     img = img.convert("RGB").resize((128, 128))
     arr = np.array(img, dtype=np.float32)
     # MobileNetV2 preprocessing: scale to [-1, 1]
@@ -410,7 +409,12 @@ def predict(session, img: Image.Image):
     results = []
     for i in top3_idx:
         if i < len(CLASS_NAMES):
-            results.append((CLASS_NAMES[i], float(preds[i])))
+            label = CLASS_NAMES[i]
+            results.append({
+                "label": label,
+                "confidence": float(preds[i]) * 100,
+                "info": DISEASE_DB.get(label, {}),
+            })
     return results
 
 def confidence_class(conf):
@@ -427,9 +431,9 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # Load model
-model, model_type = load_model()
+model = load_model()
 if model is None:
-    st.error("⚠️ No model file found. Please upload `plant_disease_mobilenetv2.keras` or `model.tflite` to the app directory.")
+    st.error("⚠️ No model file found. Please add `model.onnx` to the app directory.")
 
 # ── Upload ──
 col_upload, col_result = st.columns([1, 1.3], gap="large")
@@ -450,7 +454,7 @@ with col_upload:
 with col_result:
     if uploaded and model:
         with st.spinner("🔍 Analysing leaf..."):
-            results = predict(model, model_type, img)
+            results = predict(model, img)
 
         top = results[0]
         info = top["info"]
