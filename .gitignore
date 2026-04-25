@@ -1,0 +1,3 @@
+echo *.keras >> .gitignore
+echo __pycache__/ >> .gitignore
+echo .streamlit/secrets.toml >> .gitignore
