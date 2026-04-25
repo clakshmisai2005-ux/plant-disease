@@ -389,49 +389,28 @@ CLASS_NAMES = list(DISEASE_DB.keys())
 @st.cache_resource(show_spinner=False)
 def load_model():
     try:
-        import tensorflow as tf
-        model = tf.keras.models.load_model("plant_disease_mobilenetv2.keras")
-        return model, "keras"
+        import onnxruntime as ort
+        session = ort.InferenceSession("model.onnx")
+        return session
     except Exception:
-        pass
-    try:
-        try:
-            from ai_edge_litert.interpreter import Interpreter
-        except ImportError:
-            import tensorflow as tf
-            Interpreter = tf.lite.Interpreter
-        interpreter = Interpreter(model_path="model.tflite")
-        interpreter.allocate_tensors()
-        return interpreter, "tflite"
-    except Exception:
-        pass
-    return None, None
+        return None
 
-def predict(model, model_type, img: Image.Image):
-    import tensorflow as tf
+def predict(session, img: Image.Image):
+    import onnxruntime as ort
     img = img.convert("RGB").resize((128, 128))
     arr = np.array(img, dtype=np.float32)
-    arr = tf.keras.applications.mobilenet_v2.preprocess_input(arr)
+    # MobileNetV2 preprocessing: scale to [-1, 1]
+    arr = (arr / 127.5) - 1.0
     arr = np.expand_dims(arr, 0)
 
-    if model_type == "keras":
-        preds = model.predict(arr, verbose=0)[0]
-    else:
-        inp = model.get_input_details()[0]
-        out = model.get_output_details()[0]
-        model.set_tensor(inp['index'], arr)
-        model.invoke()
-        preds = model.get_tensor(out['index'])[0]
+    input_name = session.get_inputs()[0].name
+    preds = session.run(None, {input_name: arr})[0][0]
 
     top3_idx = np.argsort(preds)[::-1][:3]
     results = []
     for i in top3_idx:
         if i < len(CLASS_NAMES):
-            results.append({
-                "label": CLASS_NAMES[i],
-                "confidence": float(preds[i]) * 100,
-                "info": DISEASE_DB.get(CLASS_NAMES[i], {}),
-            })
+            results.append((CLASS_NAMES[i], float(preds[i])))
     return results
 
 def confidence_class(conf):
